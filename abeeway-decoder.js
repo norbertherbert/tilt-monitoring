@@ -105,6 +105,9 @@ export const calculateTiltZ = (gVec) => {
 }
 
 
+// This function is just an approximation for rotation corrections.
+// It is currently not used in the app!
+// the right correction function is in the pole-model.js file.
 export const createCorrectionMatrix = ( measuredTheta, measuredPhi, calibrationPayload ) => {
 
     const r = decodePayloadHex(calibrationPayload);
