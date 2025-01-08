@@ -1,15 +1,6 @@
-const { sin, cos, atan2, sqrt, PI, } = Math;
+/*
 
-export const decodePayloadHex = (payloadHex) => {
-    // const payloadHex = "0a00648e0002ffd9fc22002901";
-    // const payloadHex = "070061890002faffffffe9fb0000000afc000003f2";
-    const buffer = hexStringToArrayBuffer(payloadHex);
-    const view = new DataView(buffer);
-    const messageType = view.getUint8(0);
-
-    /*
-
-    Example messages:
+Example messages:
 
     laying on its back, facing the sky:    0a04628a00020017000203ec01
     laying on its left side facing at you: 0a04628a000203f6fff6ffe501
@@ -27,11 +18,24 @@ export const decodePayloadHex = (payloadHex) => {
 
     answer to 'orientation on demand' request: 070061890002faffffffe9fb0000000afc000003f2
 
-    */
+*/
+
+
+import * as THREE from "three";
+const { sin, cos, atan2, sqrt, PI, } = Math;
+
+
+// ***********************************************
+// *** Decode payload
+// ***********************************************
+
+export const decodePayloadHex = (payloadHex) => {
+    const buffer = hexStringToArrayBuffer(payloadHex);
+    const view = new DataView(buffer);
+    const messageType = view.getUint8(0);
 
     if (messageType == 0x0a) {                       // event message
         const eventType = view.getUint8(5);
-        // console.log(view.getInt16(6), view.getInt16(8), view.getInt16(10));
         if (eventType == 2) {                        // motion_end event
             return {
                 x: -view.getInt16(6),  // local -x
@@ -82,6 +86,16 @@ export const hexStringToArrayBuffer = (hexString) => {
     return array.buffer;
 }
 
+
+// ***********************************************
+// *** Functions for angle calculations
+// ***********************************************
+
+// Angle variable names:
+// -- psi: The angle between the Abeeway Device's -Z Axis and the Geographical North when the pole is in vertical orientation.
+// -- phi: The angle between the direction of the pole's lane and the Geographical North.
+// -- theta: The angle between the vertical direction and the pole.
+
 export const calculateTheta = (gVec) => {
     const angle = atan2(
         sqrt(gVec.x**2 + gVec.z**2), gVec.y
@@ -105,13 +119,72 @@ export const calculateTiltZ = (gVec) => {
 }
 
 
+// ***********************************************
+// *** Conversion functions between Theta/Phi and tiltX/tiltZ angles 
+// ***********************************************
+
+export const tiltToSpherical = (tiltX, tiltZ) => {
+    let phi, theta;
+    if (tiltZ > PI/2) {
+        const tanTiltX = tan(tiltX);
+        const tanTiltZ = tan(PI-tiltZ);
+        phi = PI-atan(tanTiltZ/tanTiltX);
+        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
+    } else {
+        const tanTiltX = tan(tiltX);
+        const tanTiltZ = tan(tiltZ);
+        phi = atan(tanTiltZ/tanTiltX);
+        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
+    } 
+    return {theta, phi};
+};
+
+export const sphericalToTilt = (theta, phiLocal) => {
+    const tiltX = atan2(cos(theta), sin(theta)*sin(phiLocal));
+    const tiltZ = atan2(cos(theta), sin(theta)*cos(phiLocal));
+    return {tiltX, tiltZ};
+};
+
+export const tiltToSphericalDeg = (tiltXDeg, tiltZDeg) => {
+    let phi, theta;
+    if (tiltZDeg > 90) {
+        const tanTiltX = tan(tiltXDeg*PI/180);
+        const tanTiltZ = tan((180-tiltZDeg)*PI/180);
+        phi = PI-atan(tanTiltZ/tanTiltX);
+        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
+    } else {
+        const tanTiltX = tan(tiltXDeg*PI/180);
+        const tanTiltZ = tan((tiltZDeg)*PI/180);
+        phi = atan(tanTiltZ/tanTiltX);
+        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
+    }
+    return {thetaDeg: theta*180/PI, phiLocalDeg: phi*180/PI};
+};
+
+export const sphericalToTiltDeg = (thetaDeg, phiLocalDeg) => {
+    const theta = thetaDeg*PI/180;
+    const phiLocal = phiLocalDeg*PI/180;
+    const tiltX = atan2(cos(theta), sin(theta)*sin(phiLocal));
+    const tiltZ = atan2(cos(theta), sin(theta)*cos(phiLocal));
+    return {tiltXDeg: tiltX*180/PI, tiltZDeg: tiltZ*180/PI};
+};
+
+
+
+
+
+
+// ***********************************************
+// *** Corrction matrix calculation
+// ***********************************************
+
+
 // This function is just an approximation for rotation corrections.
 // It is currently not used in the app!
-// the right correction function is in the pole-model.js file.
+// the right correction function is 'createCorrectionMatrix4()' that is further below
 export const createCorrectionMatrix = ( measuredTheta, measuredPhi, calibrationPayload ) => {
 
     const r = decodePayloadHex(calibrationPayload);
-    // console.log('r: ', r.x, r.y, r.z);
 
     const len = sqrt(r.x**2 + r.y**2 + r.z**2);
 
@@ -121,15 +194,11 @@ export const createCorrectionMatrix = ( measuredTheta, measuredPhi, calibrationP
         z: len*sin(measuredTheta*PI/180)*cos(measuredPhi*PI/180),
     };
 
-    // console.log('r0: ', r0.x, r0.y, r0.z);
-
     const d = {
         x: r.x - r0.x,
         y: r.y - r0.y,
         z: r.z - r0.z,
     };
-
-    // console.log('d: ', d.x, d.y, d.z);
 
     const c = {
         xx: 1, xy: (r0.x*d.y-r0.y*d.x)/(len**2), xz: -(r0.z*d.x-r0.x*d.z)/(len**2),
@@ -141,8 +210,34 @@ export const createCorrectionMatrix = ( measuredTheta, measuredPhi, calibrationP
     c.zx = -c.xz;
     c.zy = -c.yz;
 
-    // console.log('c: ', c);
-
     return c;
+
+}
+
+
+// The following functions require the THREE library for 3D modellling
+
+export const createCorrectionMatrix4 = ( measuredTheta, measuredPhi, calibrationPayload ) => {
+    
+    const r = decodePayloadHex(calibrationPayload);
+    const rVec = new THREE.Vector3(
+        r.x, r.y, r.z
+    ).normalize();
+    const r0Vec = new THREE.Vector3( 
+        sin(measuredTheta*PI/180)*sin(measuredPhi*PI/180),
+        cos(measuredTheta*PI/180),
+        sin(measuredTheta*PI/180)*cos(measuredPhi*PI/180),
+    ).normalize();
+
+    const nVec = (new THREE.Vector3()).crossVectors(rVec, r0Vec).normalize();
+    const angle = rVec.angleTo(r0Vec);
+
+    const cMat = new THREE.Matrix4();
+    cMat.makeRotationAxis(
+        nVec,
+        angle
+    );
+
+    return cMat;
 
 }

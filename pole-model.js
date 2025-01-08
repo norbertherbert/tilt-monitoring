@@ -19,7 +19,8 @@ import {
     decodePayloadHex, 
     calculateTheta, calculateLocalPhi, 
     calculateTiltX, calculateTiltZ,
-    createCorrectionMatrix,
+    createCorrectionMatrix4,
+    tiltToSphericalDeg, sphericalToTiltDeg
 } from "./abeeway-decoder.js" 
 
 const { sin, cos, tan, acos, atan, atan2, sqrt, PI, } = Math;
@@ -160,30 +161,6 @@ export const renderParams = {
     actualPayloadHex: '0a04628c0002fe520352febe01',
 };
 
-export const createCorrectionMatrix4 = ( measuredTheta, measuredPhi, calibrationPayload ) => {
-    
-    const r = decodePayloadHex(calibrationPayload);
-    const rVec = new THREE.Vector3(
-        r.x, r.y, r.z
-    ).normalize();
-    const r0Vec = new THREE.Vector3( 
-        sin(measuredTheta*PI/180)*sin(measuredPhi*PI/180),
-        cos(measuredTheta*PI/180),
-        sin(measuredTheta*PI/180)*cos(measuredPhi*PI/180),
-    ).normalize();
-
-    const nVec = (new THREE.Vector3()).crossVectors(rVec, r0Vec).normalize();
-    const angle = rVec.angleTo(r0Vec);
-
-    const cMat = new THREE.Matrix4();
-    cMat.makeRotationAxis(
-        nVec,
-        angle
-    );
-
-    return cMat;
-
-}
 
 export const renderParamsTilt = {
     tiltX: 90, 
@@ -239,52 +216,6 @@ export const setRenderParams = (params) => {
     for (let controller of gui.controllers) { controller.updateDisplay(); };
 
 }
-
-export const tiltToSpherica = (tiltX, tiltZ) => {
-    let phi, theta;
-    if (tiltZ > PI/2) {
-        const tanTiltX = tan(tiltX);
-        const tanTiltZ = tan(PI-tiltZ);
-        phi = PI-atan(tanTiltZ/tanTiltX);
-        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
-    } else {
-        const tanTiltX = tan(tiltX);
-        const tanTiltZ = tan(tiltZ);
-        phi = atan(tanTiltZ/tanTiltX);
-        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
-    } 
-    return {theta, phi};
-};
-
-export const sphericalToTilt = (theta, phiLocal) => {
-    const tiltX = atan2(cos(theta), sin(theta)*sin(phiLocal));
-    const tiltZ = atan2(cos(theta), sin(theta)*cos(phiLocal));
-    return {tiltX, tiltZ};
-};
-
-export const tiltToSphericalDeg = (tiltXDeg, tiltZDeg) => {
-    let phi, theta;
-    if (tiltZDeg > 90) {
-        const tanTiltX = tan(tiltXDeg*PI/180);
-        const tanTiltZ = tan((180-tiltZDeg)*PI/180);
-        phi = PI-atan(tanTiltZ/tanTiltX);
-        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
-    } else {
-        const tanTiltX = tan(tiltXDeg*PI/180);
-        const tanTiltZ = tan((tiltZDeg)*PI/180);
-        phi = atan(tanTiltZ/tanTiltX);
-        theta = atan(sqrt( (1/tanTiltX)**2 + (1/tanTiltZ)**2 ));
-    }
-    return {thetaDeg: theta*180/PI, phiLocalDeg: phi*180/PI};
-};
-
-export const sphericalToTiltDeg = (thetaDeg, phiLocalDeg) => {
-    const theta = thetaDeg*PI/180;
-    const phiLocal = phiLocalDeg*PI/180;
-    const tiltX = atan2(cos(theta), sin(theta)*sin(phiLocal));
-    const tiltZ = atan2(cos(theta), sin(theta)*cos(phiLocal));
-    return {tiltXDeg: tiltX*180/PI, tiltZDeg: tiltZ*180/PI};
-};
 
 export const calibrationParams = {
     abeewaySensor: true,
